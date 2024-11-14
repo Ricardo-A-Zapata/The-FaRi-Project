@@ -7,9 +7,9 @@ from IPython.display import clear_output
 tf.config.run_functions_eagerly(True)
 
 # Training parameters
-learning_rate = 0.0001
+learning_rate = 0.0025
 batch_size = 32
-epochs = 25000
+epochs = 1000
 
 """
 Be prepared to change this since we are going to be working with audio samples, not images
@@ -144,8 +144,10 @@ Disc_optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
 
 # Training step function
 def train_step(X_A_batch, X_B_batch):
-    X_A_batch = tf.cast(tf.reshape(X_A_batch, [batch_size, image_dimension]), tf.float32)
-    X_B_batch = tf.cast(tf.reshape(X_B_batch, [batch_size, image_dimension]), tf.float32)
+    X_A_batch = tf.cast(tf.reshape(X_A_batch, [batch_size, 784]), tf.float32)
+    X_B_batch = tf.cast(tf.reshape(X_B_batch, [batch_size, 784]), tf.float32)
+
+
 
     with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
         X_BA = Gen_BA(X_B_batch)
@@ -201,8 +203,9 @@ def display_samples(X_A_batch, X_B_batch, n=6):
     canvas2 = np.empty((28 * n, 28 * n))
 
     for i in range(n):
-        out_A = Gen_BA(X_B_batch).numpy()
-        out_B = Gen_AB(X_A_batch).numpy()
+        out_A = Gen_BA(tf.reshape(X_B_batch, [batch_size, 784])).numpy()
+        out_B = Gen_AB(tf.reshape(X_A_batch, [batch_size, 784])).numpy()
+
 
         for j in range(n):
             canvas1[i * 28:(i + 1) * 28, j * 28:(j + 1) * 28] = out_A[j].reshape([28, 28])
