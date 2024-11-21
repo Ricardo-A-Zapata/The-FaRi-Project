@@ -7,9 +7,9 @@ from IPython.display import clear_output
 tf.config.run_functions_eagerly(True)
 
 # Training parameters
-learning_rate = 0.0025
+learning_rate = 0.0001
 batch_size = 32
-epochs = 1000
+epochs = 25000
 
 """
 Be prepared to change this since we are going to be working with audio samples, not images
@@ -66,29 +66,47 @@ X_A = tf.Variable(tf.random.normal([batch_size, image_dimension], dtype=tf.float
 X_B = tf.Variable(tf.random.normal([batch_size, image_dimension], dtype=tf.float32))
 
 # Define weight and bias dictionaries for Discriminators and Generators
-Disc_A_W = {"disc_H": xavier_init([image_dimension, H_dim]), "disc_final": xavier_init([H_dim, 1])}
+Disc_A_W = {
+    "disc_H": tf.keras.layers.Dense(H_dim, activation=None, use_bias=False, input_shape=(image_dimension,)),
+    "disc_final": tf.keras.layers.Dense(1, activation=None, use_bias=True)
+}
 Disc_A_B = {"disc_H": xavier_init([H_dim]), "disc_final": xavier_init([1])}
-Disc_B_W = {"disc_H": xavier_init([image_dimension, H_dim]), "disc_final": xavier_init([H_dim, 1])}
+Disc_B_W = {
+    "disc_H": tf.keras.layers.Dense(H_dim, activation=None, use_bias=False, input_shape=(image_dimension,)),
+    "disc_final": tf.keras.layers.Dense(1, activation=None, use_bias=True)
+}
 Disc_B_B = {"disc_H": xavier_init([H_dim]), "disc_final": xavier_init([1])}
 Gen_AB_W = {"Gen_H": xavier_init([image_dimension, H_dim]), "Gen_final": xavier_init([H_dim, image_dimension])}
 Gen_AB_B = {"Gen_H": xavier_init([H_dim]), "Gen_final": xavier_init([image_dimension])}
 Gen_BA_W = {"Gen_H": xavier_init([image_dimension, H_dim]), "Gen_final": xavier_init([H_dim, image_dimension])}
 Gen_BA_B = {"Gen_H": xavier_init([H_dim]), "Gen_final": xavier_init([image_dimension])}
 
+
+# Define Discriminator A as a model
+Disc_A_model = tf.keras.Sequential([
+    tf.keras.layers.Dense(H_dim, activation='leaky_relu', input_shape=(image_dimension,), use_bias=True),
+    tf.keras.layers.BatchNormalization(),
+    tf.keras.layers.Dense(1, activation='sigmoid')
+])
+
+# Define Discriminator B as a model
+Disc_B_model = tf.keras.Sequential([
+    tf.keras.layers.Dense(H_dim, activation='leaky_relu', input_shape=(image_dimension,), use_bias=True),
+    tf.keras.layers.BatchNormalization(),
+    tf.keras.layers.Dense(1, activation='sigmoid')
+])
+
+
 # Define network functions
 def Disc_A(x):
     x = tf.cast(x, tf.float32)
-    hidden_layer_pred = tf.nn.leaky_relu(tf.add(tf.matmul(x, Disc_A_W["disc_H"]), Disc_A_B["disc_H"]))
-    hidden_layer_pred = tf.keras.layers.BatchNormalization()(hidden_layer_pred)
-    output_layer_pred = tf.nn.sigmoid(tf.add(tf.matmul(hidden_layer_pred, Disc_A_W["disc_final"]), Disc_A_B["disc_final"]))
-    return output_layer_pred
+    return Disc_A_model(x)
 
 def Disc_B(x):
     x = tf.cast(x, tf.float32)
-    hidden_layer_pred = tf.nn.leaky_relu(tf.add(tf.matmul(x, Disc_B_W["disc_H"]), Disc_B_B["disc_H"]))
-    hidden_layer_pred = tf.keras.layers.BatchNormalization()(hidden_layer_pred)
-    output_layer_pred = tf.nn.sigmoid(tf.add(tf.matmul(hidden_layer_pred, Disc_B_W["disc_final"]), Disc_B_B["disc_final"]))
-    return output_layer_pred
+    return Disc_B_model(x)
+
+
 
 def Gen_AB(x):
     x = tf.cast(x, tf.float32)
@@ -142,12 +160,9 @@ Gen_Loss = (tf.reduce_mean(tf.square(Disc_B_fake - tf.ones_like(Disc_B_fake))) +
 Gen_optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
 Disc_optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
 
-# Training step function
 def train_step(X_A_batch, X_B_batch):
-    X_A_batch = tf.cast(tf.reshape(X_A_batch, [batch_size, 784]), tf.float32)
-    X_B_batch = tf.cast(tf.reshape(X_B_batch, [batch_size, 784]), tf.float32)
-
-
+    X_A_batch = tf.cast(X_A_batch, tf.float32)
+    X_B_batch = tf.cast(X_B_batch, tf.float32)
 
     with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
         X_BA = Gen_BA(X_B_batch)
@@ -171,31 +186,24 @@ def train_step(X_A_batch, X_B_batch):
                     tf.reduce_mean(10 * tf.abs(X_A_batch - X_ABA)) +
                     tf.reduce_mean(10 * tf.abs(X_B_batch - X_BAB)))
 
+    # Use trainable_variables to compute gradients
     Gen_gradients = gen_tape.gradient(Gen_Loss, list(Gen_AB_W.values()) + list(Gen_AB_B.values()) + list(Gen_BA_W.values()) + list(Gen_BA_B.values()))
-    Disc_gradients = disc_tape.gradient(Disc_Loss, list(Disc_A_W.values()) + list(Disc_A_B.values()) + list(Disc_B_W.values()) + list(Disc_B_B.values()))
+    Disc_gradients = disc_tape.gradient(Disc_Loss, Disc_A_model.trainable_variables + Disc_B_model.trainable_variables)
 
+    # Apply gradients
     Gen_optimizer.apply_gradients(zip(Gen_gradients, list(Gen_AB_W.values()) + list(Gen_AB_B.values()) + list(Gen_BA_W.values()) + list(Gen_BA_B.values())))
-    Disc_optimizer.apply_gradients(zip(Disc_gradients, list(Disc_A_W.values()) + list(Disc_A_B.values()) + list(Disc_B_W.values()) + list(Disc_B_B.values())))
+    Disc_optimizer.apply_gradients(zip(Disc_gradients, Disc_A_model.trainable_variables + Disc_B_model.trainable_variables))
 
     return Disc_Loss, Gen_Loss
+
 
 # Loading the Fashion MNIST dataset
 (X_train, y_train), (X_test, y_test) = tf.keras.datasets.fashion_mnist.load_data()
 
 # Preparing datasets
 mid = int(X_train.shape[0] / 2)
-X_train_real = X_train[:mid]
-X_train_rot = scipy.ndimage.rotate(X_train[mid:].reshape(-1, 28, 28), 90, axes=(1, 2))
-
-# Training loop
-for epoch in range(epochs):
-    X_A_batch = X_train_real[np.random.choice(X_train_real.shape[0], batch_size, replace=False)]
-    X_B_batch = X_train_rot[np.random.choice(X_train_rot.shape[0], batch_size, replace=False)]
-
-    Disc_loss, Gen_loss = train_step(X_A_batch, X_B_batch)
-
-    if epoch % 500 == 0:
-        print(f"Epoch {epoch}, Discriminator Loss: {Disc_loss}, Generator Loss: {Gen_loss}")
+X_train_real = X_train[:mid].reshape(-1, 784).astype(np.float32) / 255.0
+X_train_rot = scipy.ndimage.rotate(X_train[mid:].reshape(-1, 28, 28), 90, axes=(1, 2)).reshape(-1, 784).astype(np.float32) / 255.0
 
 # Display function
 def display_samples(X_A_batch, X_B_batch, n=6):
@@ -203,9 +211,8 @@ def display_samples(X_A_batch, X_B_batch, n=6):
     canvas2 = np.empty((28 * n, 28 * n))
 
     for i in range(n):
-        out_A = Gen_BA(tf.reshape(X_B_batch, [batch_size, 784])).numpy()
-        out_B = Gen_AB(tf.reshape(X_A_batch, [batch_size, 784])).numpy()
-
+        out_A = Gen_BA(X_B_batch).numpy()
+        out_B = Gen_AB(X_A_batch).numpy()
 
         for j in range(n):
             canvas1[i * 28:(i + 1) * 28, j * 28:(j + 1) * 28] = out_A[j].reshape([28, 28])
@@ -218,5 +225,17 @@ def display_samples(X_A_batch, X_B_batch, n=6):
     plt.figure(figsize=(n, n))
     plt.imshow(canvas2, origin="upper", cmap="gray")
     plt.show()
+
+# Training loop
+for epoch in range(epochs):
+    X_A_batch = X_train_real[np.random.choice(X_train_real.shape[0], batch_size, replace=False)]
+    X_B_batch = X_train_rot[np.random.choice(X_train_rot.shape[0], batch_size, replace=False)]
+
+    Disc_loss, Gen_loss = train_step(X_A_batch, X_B_batch)
+
+    if epoch % 200 == 0:
+        print(f"Epoch {epoch}, Discriminator Loss: {Disc_loss}, Generator Loss: {Gen_loss}")
+        display_samples(X_A_batch, X_B_batch)
+
 
 display_samples(X_train_real[:batch_size], X_train_rot[:batch_size])
