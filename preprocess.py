@@ -53,6 +53,14 @@ def process_folder_to_tensors(folder_path, save_to_folder=None, resize=(224, 224
     
     return tensors
 
+import subprocess
+from private import get_yt_dlt_folder
+def get_playlist_mp3(playlist_url):
+
+    # Call the batch file with arguments
+    subprocess.run([get_yt_dlt_folder(), playlist_url, 'a'])
+
+
 def main():
     # Define paths
     audio_folder = "path_to_audio_folder"  # Folder containing audio files
