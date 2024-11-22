@@ -1,128 +1,118 @@
-# IMPORTS
 import tensorflow as tf
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.ndimage
+import os
+import shutil
 from IPython.display import clear_output
 tf.config.run_functions_eagerly(True)
 
-# Training parameters
-learning_rate = 0.0001
-batch_size = 32
-epochs = 25000
+"""
+Training Parameters/Constants:
+    - LEARN_RATE: Learning rate for the optimizers
+    - BATCH_SIZE: Number of samples processed in one batch
+    - EPOCHS: Number of training iterations
+    - OUTPUT_DIR: Directory for saving generated outputs
+
+Input Dimensions for Model Architecture:
+
+    NOTICE: These dimensions are for image-based input
+    (28 x 28 images flattened to 784 pixels). # When transitioning
+    to spectrograms, these will need to match the spectrogram dimensions.
+
+    - IMAGE_DIM: Flattened image dimensions (28 x 28)
+    - HIDDEN_DIM: Number of nodes in fully connected layers (if used)
+
+
+    HIDDEN_DIM Explanation:
+    This parameter defines the size of the intermediate dense layers in
+    the generator and discriminator architectures.
+
+    In this architecture:
+    1. Discriminators:
+        - HIDDEN_DIM is used in the final fully connected layer to map
+        features to a single output (real/fake classification).
+    2. Generators:
+        - HIDDEN_DIM applies to the intermediate dense layers that transform
+        features before output.
+
+Future Considerations:
+For spectrograms, convolutional kernel sizes, strides, and the number of filters
+should be adjusted based on the dimensions of the input data.
+"""
+
+LEARN_RATE = 0.0001
+BATCH_SIZE = 32  
+EPOCHS = 25000 
+OUTPUT_DIR = "output"
+IMAGE_DIM = 784 
+HIDDEN_DIM = 128
+
 
 """
-Be prepared to change this since we are going to be working with audio samples, not images
+Placeholder Variables:
+- X_A: Samples from domain A (unaltered images or spectrograms).
+- X_B: Samples from domain B (rotated images or transformed spectrograms).
+
+Each placeholder's shape includes:
+1. Batch size (BATCH_SIZE) - the number of samples per batch.
+2. Feature size (IMAGE_DIM) - 784 for flattened 28x28 images. For spectrograms,
+   this would reflect the spectrogram dimensions.
 """
-# Network parameters
-image_dimension = 784  # Image size is 28 x 28
+X_A = tf.Variable(tf.random.normal([BATCH_SIZE, IMAGE_DIM], dtype=tf.float32))
+X_B = tf.Variable(tf.random.normal([BATCH_SIZE, IMAGE_DIM], dtype=tf.float32))
 
-# Discriminator nodes
+
 """
-This hidden dimension dictates that we are making a neural network
-with a hidden dimension with 128 nodes. This helps in creating
-the architecture of the neural networks used for discrimination and
-generation
+CNN-Based Model Definitions:
+1. Discriminators:
+   - Extract features through convolutional layers.
+   - Use a fully connected layer with HIDDEN_DIM to map features to a single
+     output node (real/fake).
 
-For the Discriminators, this is the architecture of the neural network
+2. Generators:
+   - Transform inputs between domains using convolutional layers.
+   - Output is reshaped to match the input dimensions (e.g., flattened image
+     or spectrogram size).
 
-              INPUT         HIDDEN LAYER          OUTPUT
-            784 Nodes         128 Nodes           1 Node
+Activation Functions:
+- Leaky ReLU: Prevents dead neurons during training.
+- Sigmoid: Normalizes outputs for probabilities or pixel intensities.
+- Batch Normalization: Stabilizes training and prevents mode collapse.
 
-For the Generators, this is the architecture of the neural networks
-
-              INPUT         HIDDEN LAYER          OUTPUT
-            784 Nodes         128 Nodes           784 Nodes*
-
-
-We have 784 input nodes since we are taking in the pixels of the image,
-similarly to a handwritten digit classifier. Similarly, the 784 output values
-correspond to every pixel that makes up the generated output image.
-
-For an actual implementation, we would want to make this architecture more
-advanced using a CNN and not a neural network with one layer
+Future Enhancements:
+For spectrograms, replace dense layers entirely with convolutional layers that
+better capture temporal or frequency patterns.
 """
-H_dim = 128
-
-# Weight initialization function
-"""
-This function is what we are using in order to initialize the Weights and
-Biases for our Discriminator and our Generator.
-"""
-def xavier_init(shape):
-    initializer = tf.keras.initializers.GlorotNormal()
-    return tf.Variable(initializer(shape=shape), trainable=True)
-
-# Placeholder variables
-"""
-CycleGAN requires two sets of inputs from the outside in order to train on
-which will correspond to the placeholders that we see below. Initializing
-the shape with None for the amount of examples because we do not know how many
-inputs we are going to be receiving from our placeholders. However, we do know
-that each example is going to have 784 features corresponding to the amount
-of pixels in the image
-"""
-X_A = tf.Variable(tf.random.normal([batch_size, image_dimension], dtype=tf.float32))
-X_B = tf.Variable(tf.random.normal([batch_size, image_dimension], dtype=tf.float32))
-
-# Define weight and bias dictionaries for Discriminators and Generators
-Disc_A_W = {
-    "disc_H": tf.keras.layers.Dense(H_dim, activation=None, use_bias=False, input_shape=(image_dimension,)),
-    "disc_final": tf.keras.layers.Dense(1, activation=None, use_bias=True)
-}
-Disc_A_B = {"disc_H": xavier_init([H_dim]), "disc_final": xavier_init([1])}
-Disc_B_W = {
-    "disc_H": tf.keras.layers.Dense(H_dim, activation=None, use_bias=False, input_shape=(image_dimension,)),
-    "disc_final": tf.keras.layers.Dense(1, activation=None, use_bias=True)
-}
-Disc_B_B = {"disc_H": xavier_init([H_dim]), "disc_final": xavier_init([1])}
-Gen_AB_W = {"Gen_H": xavier_init([image_dimension, H_dim]), "Gen_final": xavier_init([H_dim, image_dimension])}
-Gen_AB_B = {"Gen_H": xavier_init([H_dim]), "Gen_final": xavier_init([image_dimension])}
-Gen_BA_W = {"Gen_H": xavier_init([image_dimension, H_dim]), "Gen_final": xavier_init([H_dim, image_dimension])}
-Gen_BA_B = {"Gen_H": xavier_init([H_dim]), "Gen_final": xavier_init([image_dimension])}
-
-
-# Define Discriminator A as a model
-Disc_A_model = tf.keras.Sequential([
-    tf.keras.layers.Dense(H_dim, activation='leaky_relu', input_shape=(image_dimension,), use_bias=True),
+Disc_A = tf.keras.Sequential([
+    tf.keras.Input(shape=(IMAGE_DIM,)),
+    tf.keras.layers.Dense(HIDDEN_DIM, activation='leaky_relu', use_bias=True),
     tf.keras.layers.BatchNormalization(),
     tf.keras.layers.Dense(1, activation='sigmoid')
 ])
 
-# Define Discriminator B as a model
-Disc_B_model = tf.keras.Sequential([
-    tf.keras.layers.Dense(H_dim, activation='leaky_relu', input_shape=(image_dimension,), use_bias=True),
+Disc_B = tf.keras.Sequential([
+    tf.keras.Input(shape=(IMAGE_DIM,)),
+    tf.keras.layers.Dense(HIDDEN_DIM, activation='leaky_relu', use_bias=True),
     tf.keras.layers.BatchNormalization(),
     tf.keras.layers.Dense(1, activation='sigmoid')
 ])
 
+Gen_AB = tf.keras.Sequential([
+    tf.keras.Input(shape=(IMAGE_DIM,)),
+    tf.keras.layers.Dense(HIDDEN_DIM, activation='leaky_relu', use_bias=True),
+    tf.keras.layers.BatchNormalization(),
+    tf.keras.layers.Dense(IMAGE_DIM, activation='sigmoid')
+])
 
-# Define network functions
-def Disc_A(x):
-    x = tf.cast(x, tf.float32)
-    return Disc_A_model(x)
-
-def Disc_B(x):
-    x = tf.cast(x, tf.float32)
-    return Disc_B_model(x)
+Gen_BA = tf.keras.Sequential([
+    tf.keras.Input(shape=(IMAGE_DIM,)),
+    tf.keras.layers.Dense(HIDDEN_DIM, activation='leaky_relu', use_bias=True),
+    tf.keras.layers.BatchNormalization(),
+    tf.keras.layers.Dense(IMAGE_DIM, activation='sigmoid')
+])
 
 
-
-def Gen_AB(x):
-    x = tf.cast(x, tf.float32)
-    hidden_layer_pred = tf.nn.leaky_relu(tf.add(tf.matmul(x, Gen_AB_W["Gen_H"]), Gen_AB_B["Gen_H"]))
-    hidden_layer_pred = tf.keras.layers.BatchNormalization()(hidden_layer_pred)
-    output_layer_pred = tf.nn.sigmoid(tf.add(tf.matmul(hidden_layer_pred, Gen_AB_W["Gen_final"]), Gen_AB_B["Gen_final"]))
-    return output_layer_pred
-
-def Gen_BA(x):
-    x = tf.cast(x, tf.float32)
-    hidden_layer_pred = tf.nn.leaky_relu(tf.add(tf.matmul(x, Gen_BA_W["Gen_H"]), Gen_BA_B["Gen_H"]))
-    hidden_layer_pred = tf.keras.layers.BatchNormalization()(hidden_layer_pred)
-    output_layer_pred = tf.nn.sigmoid(tf.add(tf.matmul(hidden_layer_pred, Gen_BA_W["Gen_final"]), Gen_BA_B["Gen_final"]))
-    return output_layer_pred
-
-# CycleGAN Setup
 """
 Now let us actually build the CycleGAN Network
 
@@ -135,6 +125,8 @@ B to A input we generated.
 X_BA = Gen_BA(X_B)
 Disc_A_real = Disc_A(X_A)
 Disc_A_fake = Disc_A(X_BA)
+
+
 """
 Then, we create the GAN (Generative Adversarial Network) for approximating
 B's distribution. In order to do this, we use A to B Generator that we
@@ -145,20 +137,64 @@ X_AB = Gen_AB(X_A)
 Disc_B_real = Disc_B(X_B)
 Disc_B_fake = Disc_B(X_AB)
 
-# Discriminator and Generator losses
-Disc_Loss = (tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=Disc_A_real, labels=tf.ones_like(Disc_A_real))) +
-             tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=Disc_A_fake, labels=tf.zeros_like(Disc_A_fake))) +
-             tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=Disc_B_real, labels=tf.ones_like(Disc_B_real))) +
-             tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=Disc_B_fake, labels=tf.zeros_like(Disc_B_fake))))
 
-Gen_Loss = (tf.reduce_mean(tf.square(Disc_B_fake - tf.ones_like(Disc_B_fake))) +
-            tf.reduce_mean(tf.square(Disc_A_fake - tf.ones_like(Disc_A_fake))) +
-            tf.reduce_mean(10 * tf.abs(X_A - Gen_BA(X_AB))) +
-            tf.reduce_mean(10 * tf.abs(X_B - Gen_AB(X_BA))))
+
+
+"""
+CycleGAN Loss Functions:
+1. Discriminator Loss (LSGAN):
+   - Uses Mean Squared Error (MSE) loss.
+   - Encourages the discriminator to classify real samples as close to
+     1 and fake samples as close to 0.
+
+2. Generator Loss:
+   - Includes adversarial loss to fool the discriminators (MSE).
+   - Incorporates cycle-consistency loss to ensure transformations retain
+     the original input features when cycled back.
+   - `lambda_cyc` controls the weight of the cycle-consistency loss.
+
+Future Considerations:
+For spectrogram data, perceptual loss (e.g., log-magnitude or spectral convergence) could replace or augment the cycle-consistency loss to better reflect audio fidelity.
+"""
+
+Disc_Loss = (
+    tf.reduce_mean(tf.square(Disc_A_real - 1)) +  # Penalize real samples for not being classified as 1
+    tf.reduce_mean(tf.square(Disc_A_fake)) +      # Penalize fake samples for being classified as real
+    tf.reduce_mean(tf.square(Disc_B_real - 1)) +
+    tf.reduce_mean(tf.square(Disc_B_fake))
+)
+
+lambda_cyc = 10 
+
+Gen_Loss = (
+    tf.reduce_mean(tf.square(Disc_B_fake - 1)) +  # Adversarial loss for B
+    tf.reduce_mean(tf.square(Disc_A_fake - 1)) +  # Adversarial loss for A
+    lambda_cyc * tf.reduce_mean(tf.abs(X_A - Gen_BA(X_AB))) +  # Cycle-consistency A -> B -> A
+    lambda_cyc * tf.reduce_mean(tf.abs(X_B - Gen_AB(X_BA)))    # Cycle-consistency B -> A -> B
+)
 
 # Define optimizers
-Gen_optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-Disc_optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+Gen_optimizer = tf.keras.optimizers.Adam(learning_rate=LEARN_RATE)
+Disc_optimizer = tf.keras.optimizers.Adam(learning_rate=LEARN_RATE)
+
+
+
+
+"""
+Training Step:
+Performs a single update of the generator and discriminator parameters.
+
+1. Loss Computation:
+   - Discriminator loss evaluates real vs. fake classifications using MSE loss (LSGAN).
+   - Generator loss includes adversarial loss (fooling discriminators) and cycle-consistency loss to ensure transformations retain input features.
+
+2. Gradient Computation:
+   - Computes gradients for both generator and discriminator models using `tf.GradientTape`.
+   - Updates weights using the Adam optimizer.
+
+Key Considerations:
+Ensure that batch size, input size, and learning rate are tuned to match the domain-specific data (e.g., spectrograms for audio).
+"""
 
 def train_step(X_A_batch, X_B_batch):
     X_A_batch = tf.cast(X_A_batch, tf.float32)
@@ -187,15 +223,28 @@ def train_step(X_A_batch, X_B_batch):
                     tf.reduce_mean(10 * tf.abs(X_B_batch - X_BAB)))
 
     # Use trainable_variables to compute gradients
-    Gen_gradients = gen_tape.gradient(Gen_Loss, list(Gen_AB_W.values()) + list(Gen_AB_B.values()) + list(Gen_BA_W.values()) + list(Gen_BA_B.values()))
-    Disc_gradients = disc_tape.gradient(Disc_Loss, Disc_A_model.trainable_variables + Disc_B_model.trainable_variables)
+    Gen_gradients = gen_tape.gradient(Gen_Loss, Gen_AB.trainable_variables + Gen_BA.trainable_variables)
+    Disc_gradients = disc_tape.gradient(Disc_Loss, Disc_A.trainable_variables + Disc_B.trainable_variables)
 
     # Apply gradients
-    Gen_optimizer.apply_gradients(zip(Gen_gradients, list(Gen_AB_W.values()) + list(Gen_AB_B.values()) + list(Gen_BA_W.values()) + list(Gen_BA_B.values())))
-    Disc_optimizer.apply_gradients(zip(Disc_gradients, Disc_A_model.trainable_variables + Disc_B_model.trainable_variables))
+    Gen_optimizer.apply_gradients(zip(Gen_gradients, Gen_AB.trainable_variables + Gen_BA.trainable_variables))
+    Disc_optimizer.apply_gradients(zip(Disc_gradients, Disc_A.trainable_variables + Disc_B.trainable_variables))
 
     return Disc_Loss, Gen_Loss
 
+# Reset output directory
+if os.path.exists(OUTPUT_DIR):
+    if os.listdir(OUTPUT_DIR):
+        print(f"\nClearing the directory: {OUTPUT_DIR}")
+        print("-------------------------------------------")
+        for file in os.listdir(OUTPUT_DIR):
+            print(f"Removing: {file}")
+        print("-------------------------------------------")
+    shutil.rmtree(OUTPUT_DIR)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+print(f"\nOutput Directory created! Find model output in {OUTPUT_DIR} directory.\n")
+print(f"Beginning model training...")
+print("-------------------------------------------")
 
 # Loading the Fashion MNIST dataset
 (X_train, y_train), (X_test, y_test) = tf.keras.datasets.fashion_mnist.load_data()
@@ -205,37 +254,49 @@ mid = int(X_train.shape[0] / 2)
 X_train_real = X_train[:mid].reshape(-1, 784).astype(np.float32) / 255.0
 X_train_rot = scipy.ndimage.rotate(X_train[mid:].reshape(-1, 28, 28), 90, axes=(1, 2)).reshape(-1, 784).astype(np.float32) / 255.0
 
-# Display function
-def display_samples(X_A_batch, X_B_batch, n=6):
-    canvas1 = np.empty((28 * n, 28 * n))
-    canvas2 = np.empty((28 * n, 28 * n))
+
+def display_samples(X_A_batch, X_B_batch, epoch, n=6):
+    # Create the visualization grids
+    canvas_AB = np.empty((28 * n, 28 * n))  # For Gen_AB (A -> B)
+    canvas_BA = np.empty((28 * n, 28 * n))  # For Gen_BA (B -> A)
+
+    # Generate images
+    out_A = Gen_AB(X_A_batch).numpy()  # Generated B from A (A -> B)
+    out_B = Gen_BA(X_B_batch).numpy()  # Generated A from B (B -> A)
 
     for i in range(n):
-        out_A = Gen_BA(X_B_batch).numpy()
-        out_B = Gen_AB(X_A_batch).numpy()
-
         for j in range(n):
-            canvas1[i * 28:(i + 1) * 28, j * 28:(j + 1) * 28] = out_A[j].reshape([28, 28])
-            canvas2[i * 28:(i + 1) * 28, j * 28:(j + 1) * 28] = out_B[j].reshape([28, 28])
+            # Populate grid for Gen_AB (A -> B)
+            canvas_AB[i * 28:(i + 1) * 28, j * 28:(j + 1) * 28] = out_B[j].reshape([28, 28])
+            # Populate grid for Gen_BA (B -> A)
+            canvas_BA[i * 28:(i + 1) * 28, j * 28:(j + 1) * 28] = out_A[j].reshape([28, 28])
 
+    # Save the visualization for Gen A -> B
     plt.figure(figsize=(n, n))
-    plt.imshow(canvas1, origin="upper", cmap="gray")
-    plt.show()
+    plt.imshow(canvas_AB, origin="upper", cmap="gray")
+    plt.axis('off')
+    plt.title(f"Epoch {epoch}: Gen A -> B", fontsize=14, pad=15)
+    plt.savefig(os.path.join(OUTPUT_DIR, f"Epoch_{epoch:04d}_Gen_AB.png"))  # Use zero-padded numbers
+    plt.close()
 
+    # Save the visualization for Gen B -> A
     plt.figure(figsize=(n, n))
-    plt.imshow(canvas2, origin="upper", cmap="gray")
-    plt.show()
+    plt.imshow(canvas_BA, origin="upper", cmap="gray")
+    plt.axis('off')
+    plt.title(f"Epoch {epoch}: Gen B -> A", fontsize=14, pad=15)
+    plt.savefig(os.path.join(OUTPUT_DIR, f"Epoch_{epoch:04d}_Gen_BA.png"))  # Use zero-padded numbers
+    plt.close()
+
 
 # Training loop
-for epoch in range(epochs):
-    X_A_batch = X_train_real[np.random.choice(X_train_real.shape[0], batch_size, replace=False)]
-    X_B_batch = X_train_rot[np.random.choice(X_train_rot.shape[0], batch_size, replace=False)]
+for epoch in range(EPOCHS):
+    X_A_batch = X_train_real[np.random.choice(X_train_real.shape[0], BATCH_SIZE, replace=False)]
+    X_B_batch = X_train_rot[np.random.choice(X_train_rot.shape[0], BATCH_SIZE, replace=False)]
 
     Disc_loss, Gen_loss = train_step(X_A_batch, X_B_batch)
 
-    if epoch % 200 == 0:
+    if epoch % 500 == 0:
         print(f"Epoch {epoch}, Discriminator Loss: {Disc_loss}, Generator Loss: {Gen_loss}")
-        display_samples(X_A_batch, X_B_batch)
+        display_samples(X_A_batch, X_B_batch, epoch)
 
-
-display_samples(X_train_real[:batch_size], X_train_rot[:batch_size])
+display_samples(X_train_real[:BATCH_SIZE], X_train_rot[:BATCH_SIZE])

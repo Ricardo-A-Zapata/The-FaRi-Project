@@ -1,6 +1,6 @@
 # The FaRi Project - Voice Replication using CycleGAN
 
-## Overview
+### Overview
 
 The **FaRi Project** is a deep learning initiative developed by Faith Villarreal and Ricardo Zapata. The project focuses on replicating voices using a **Cycle Generative Adversarial Network (CycleGAN)** model. This model enables users to input a recording of their own voice and replicate the voice of prominent figures or musical artists through deep learning techniques.
 
@@ -16,7 +16,7 @@ These two models engage in an adversarial process to improve each other. The **C
 
 ## Project Goal
 
-The primary goal of this project is to train models using voice data from cultural and societal figures. Users can then input a recording of their own voice, and the model will generate an output that mimics the voice of the chosen figure. This could have exciting implications for media, entertainment, and personalization in vocal recordings.
+The primary goal of this project is democratize music creation and free expression. People should not be limited by their finances or ability to access professional studio/mix engineering to express themselves. Through The FaRi Project, we hope to help anyone and everyone have access to professional - sounding music in a easy-to-use way. We hope to allow users to provide stems such as raw vocal recordings and instrumentation / a beat, using our trained model to generate a fully mixed sound that is output at the end. We also plan to implement an AI ChatBot that will ask the user what they think of the final mix and be receptive to feedback in order to fix the mix to the user's liking. This could have exciting implications for media, entertainment, and personalization in vocal recordings.
 
 ## Project Structure
 
@@ -30,16 +30,27 @@ The primary goal of this project is to train models using voice data from cultur
 
 - Python
 - TensorFlow / PyTorch (deep learning frameworks)
-- Jupyter Notebook
 - Griffin-Lim Vocoder
 
 ## Installation and Usage
 
 ### Prerequisites:
-- Install the necessary libraries listed in `requirements.txt` (if applicable).
-- Python 3.x environment with Jupyter Notebook support.
+- Install the necessary libraries listed in `requirements.txt`.
 
-### Running the Project:
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/YourGitHubUsername/The-FaRi-Project.git
+# Credits and Thanks
+
+## In search of resources to learn more about deep learning, adversarial networks, and generative adversarial networks for this project, the following videos/resources were very helpful so I want to show appreciation and catalog them below:
+
+[Deep Learning Crash Course for Beginners]( https://www.youtube.com/watch?v=VyWAvY2CF9c&t=3387s&ab_channel=freeCodeCamp.org) by freeCodeCamp.org
+
+[Generative Adversarial Networks (GANs) - Computerphile](https://www.youtube.com/watch?v=Sw9r8CL98N0&ab_channel=Computerphile) by Computerphile
+
+[Zebras, Horses & CycleGAN - Computerphile](https://www.youtube.com/watch?v=T-lBMrjZ3_0&ab_channel=Computerphile) by Computerphile
+
+[Deep Learning 46: Unpaired Image to Image translation Network (Cycle GAN) and DiscoGAN](https://www.youtube.com/watch?v=nB8uVGbesZ4&ab_channel=AhladKumar) by Ahlad Kumar
+
+[Deep Learning 47: TensorFlow Implementation of Image to Image Translation Network (Cycle GAN)](https://www.youtube.com/watch?v=nwtWt4tTm9s&ab_channel=AhladKumar) by Ahlad Kumar
+
+[AI Audio Datasets (AI-ADS) GitHub](https://github.com/Yuan-ManX/ai-audio-datasets) from GitHub user Yuan ManX
+
+[CycleGAN GitHub](https://github.com/junyanz/CycleGAN) from GitHub user junyanz
