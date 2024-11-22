@@ -289,7 +289,7 @@ def display_samples(X_A_batch, X_B_batch, epoch, n=6):
 
 
 # Training loop
-for epoch in range(EPOCHS):
+for epoch in range(EPOCHS + 1):
     X_A_batch = X_train_real[np.random.choice(X_train_real.shape[0], BATCH_SIZE, replace=False)]
     X_B_batch = X_train_rot[np.random.choice(X_train_rot.shape[0], BATCH_SIZE, replace=False)]
 
@@ -299,4 +299,4 @@ for epoch in range(EPOCHS):
         print(f"Epoch {epoch}, Discriminator Loss: {Disc_loss}, Generator Loss: {Gen_loss}")
         display_samples(X_A_batch, X_B_batch, epoch)
 
-display_samples(X_train_real[:BATCH_SIZE], X_train_rot[:BATCH_SIZE])
+
