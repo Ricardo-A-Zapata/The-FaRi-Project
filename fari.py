@@ -298,5 +298,3 @@ for epoch in range(EPOCHS + 1):
     if epoch % 500 == 0:
         print(f"Epoch {epoch}, Discriminator Loss: {Disc_loss}, Generator Loss: {Gen_loss}")
         display_samples(X_A_batch, X_B_batch, epoch)
-
-
